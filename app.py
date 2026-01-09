@@ -22,7 +22,7 @@ app = Flask(__name__)
 
 # --- CONFIGURACIÓN SWAGGER ---
 app.config['SWAGGER'] = {
-    'title': 'API SmartCook - Notas y Usuarios',
+    'title': 'API Wise Agend - Notas y Apuntes',
     'uiversion': 3
 }
 swagger = Swagger(app) # <--- IMPORTANTE: Inicializamos Swagger
@@ -769,3 +769,4 @@ def api_get_unlocked_backgrounds(id_usuario):
 # =====================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
+
