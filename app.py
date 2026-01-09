@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flasgger import Swagger # <--- IMPORTANTE: Importamos Swagger
 from firestore import (
     db,
     crear_nota,
@@ -19,12 +20,73 @@ from firestore import (
 
 app = Flask(__name__)
 
+# --- CONFIGURACIÓN SWAGGER ---
+app.config['SWAGGER'] = {
+    'title': 'API SmartCook - Notas y Usuarios',
+    'uiversion': 3
+}
+swagger = Swagger(app) # <--- IMPORTANTE: Inicializamos Swagger
+
 
 # =====================================================
-# -----------   CREAR NOTA   --------------------------
+# -----------    CREAR NOTA    --------------------------
 # =====================================================
 @app.route("/api/notas/nueva", methods=["POST"])
 def api_crear_nota():
+    """
+    Crea una nueva nota asociada a un usuario.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: body
+        in: body
+        required: true
+        description: Datos para crear la nota. Se requiere id_categoriaNota O categoria_nombre.
+        schema:
+          type: object
+          required:
+            - id_usuario
+            - id_plantilla
+            - titulo
+            - contenido
+          properties:
+            id_usuario:
+              type: string
+              example: "user123"
+            id_plantilla:
+              type: string
+              example: "plantilla_basica"
+            titulo:
+              type: string
+              example: "Mi Nueva Receta"
+            contenido:
+              type: string
+              example: "Ingredientes: ..."
+            categoria_nombre:
+              type: string
+              description: "Nombre de la categoría (si no se envía ID)"
+              example: "Postres"
+            id_categoriaNota:
+              type: string
+              description: "ID de categoría existente (opcional)"
+            etiquetas:
+              type: array
+              items:
+                type: string
+              example: ["dulce", "fácil"]
+            animacion_fondo:
+              type: string
+              example: "assets/animations/fire.json"
+            color_fondo:
+              type: string
+              example: "0xFFE0E0E0"
+    responses:
+      200:
+        description: Nota creada exitosamente
+      400:
+        description: Faltan campos requeridos
+    """
     data = request.json
 
     required = ["id_usuario", "id_plantilla", "titulo", "contenido"]
@@ -69,19 +131,50 @@ def api_crear_nota():
 
 
 # =====================================================
-# -----------   OBTENER NOTAS   ------------------------
+# -----------    OBTENER NOTAS    ------------------------
 # =====================================================
 @app.route("/api/notas/<id_usuario>", methods=["GET"])
 def api_get_notas(id_usuario):
+    """
+    Obtener todas las notas de un usuario.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_usuario
+        in: path
+        type: string
+        required: true
+        description: ID del usuario
+    responses:
+      200:
+        description: Lista de notas
+    """
     notas = obtener_notas_usuario(id_usuario)
     return jsonify(notas)
 
 
 # =====================================================
-# -----------   OBTENER UNA NOTA   ---------------------
+# -----------    OBTENER UNA NOTA    ---------------------
 # =====================================================
 @app.route("/api/nota/<id_nota>", methods=["GET"])
 def api_get_nota(id_nota):
+    """
+    Obtener el detalle de una nota específica.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_nota
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Objeto de la nota
+      404:
+        description: Nota no encontrada
+    """
     nota = obtener_nota(id_nota)
     if nota:
         return jsonify({**nota, "id": id_nota})
@@ -89,10 +182,37 @@ def api_get_nota(id_nota):
 
 
 # =====================================================
-# -----------   ACTUALIZAR NOTA  -----------------------
+# -----------    ACTUALIZAR NOTA    -----------------------
 # =====================================================
 @app.route("/api/nota/<id_nota>", methods=["PUT"])
 def api_update_nota(id_nota):
+    """
+    Actualizar el contenido o metadatos de una nota.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_nota
+        in: path
+        type: string
+        required: true
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            titulo:
+              type: string
+            contenido:
+              type: string
+            categoria_nombre:
+              type: string
+              description: Si se envía, actualiza la categoría
+    responses:
+      200:
+        description: Actualización exitosa
+    """
     cambios = request.json or {}
 
     categoria_nombre = cambios.get("categoria_nombre")
@@ -110,19 +230,60 @@ def api_update_nota(id_nota):
 
 
 # =====================================================
-# -----------   ELIMINAR NOTA   ------------------------
+# -----------    ELIMINAR NOTA    ------------------------
 # =====================================================
 @app.route("/api/nota/<id_nota>", methods=["DELETE"])
 def api_delete_nota(id_nota):
+    """
+    Eliminar una nota por ID.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_nota
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Nota eliminada
+    """
     eliminar_nota(id_nota)
     return jsonify({"ok": True})
 
 
 # =====================================================
-# -----------   FAVORITOS   ----------------------------
+# -----------    FAVORITOS    ----------------------------
 # =====================================================
 @app.route("/api/notas/favorita/<id_nota>", methods=["PUT"])
 def api_toggle_favorita(id_nota):
+    """
+    Marcar o desmarcar una nota como favorita.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_nota
+        in: path
+        type: string
+        required: true
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - favorita
+          properties:
+            favorita:
+              type: boolean
+              example: true
+    responses:
+      200:
+        description: Estado actualizado
+      400:
+        description: Falta campo favorita
+    """
     data = request.json or {}
     nueva_fav = data.get("favorita")
 
@@ -146,10 +307,19 @@ def api_toggle_favorita(id_nota):
 
 
 # =====================================================
-# -----------   OBTENER TODAS LAS CATEGORÍAS   --------
+# -----------    OBTENER TODAS LAS CATEGORÍAS    --------
 # =====================================================
 @app.route("/api/categorias", methods=["GET"])
 def api_get_categorias():
+    """
+    Listar todas las categorías disponibles.
+    ---
+    tags:
+      - Categorías
+    responses:
+      200:
+        description: Lista de categorías
+    """
     try:
         docs = db.collection("categoriaNota").stream()
         categorias = []
@@ -167,10 +337,33 @@ def api_get_categorias():
         return jsonify([]), 500
 
 # =====================================================
-# -----------   CREAR CATEGORÍA  ----------------------
+# -----------    CREAR CATEGORÍA    ----------------------
 # =====================================================
 @app.route("/api/categorias", methods=["POST"])
 def api_crear_categoria():
+    """
+    Crear una nueva categoría.
+    ---
+    tags:
+      - Categorías
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - nombre
+          properties:
+            nombre:
+              type: string
+              example: "Salsas"
+    responses:
+      201:
+        description: Categoría creada
+      400:
+        description: Ya existe o falta nombre
+    """
     data = request.json or {}
     nombre = data.get("nombre")
 
@@ -205,11 +398,28 @@ def api_crear_categoria():
         return jsonify({"error": "Error interno"}), 500
 
 # =====================================================
-# -----------   NOTAS POR CATEGORÍA   -----------------
+# -----------    NOTAS POR CATEGORÍA    -----------------
 # =====================================================
 @app.route("/api/notas/categoria/<id_usuario>/<id_categoria>", methods=["GET"])
 def api_get_notas_por_categoria(id_usuario, id_categoria):
-
+    """
+    Obtener notas de un usuario filtradas por categoría.
+    ---
+    tags:
+      - Notas
+    parameters:
+      - name: id_usuario
+        in: path
+        type: string
+        required: true
+      - name: id_categoria
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Lista de notas filtrada
+    """
     rels = db.collection("notas_categoriaNota")\
              .where("id_categoriaNota", "==", id_categoria)\
              .stream()
@@ -230,10 +440,37 @@ def api_get_notas_por_categoria(id_usuario, id_categoria):
 
 
 # =====================================================
-# -----------   ACTUALIZAR CATEGORÍA -------------------
+# -----------    ACTUALIZAR CATEGORÍA    -------------------
 # =====================================================
 @app.route("/api/categorias/<id_categoria>", methods=["PUT"])
 def api_update_categoria(id_categoria):
+    """
+    Renombrar una categoría existente.
+    ---
+    tags:
+      - Categorías
+    parameters:
+      - name: id_categoria
+        in: path
+        required: true
+        type: string
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - nombre
+          properties:
+            nombre:
+              type: string
+              example: "Salsas Picantes"
+    responses:
+      200:
+        description: Actualización exitosa
+      404:
+        description: Categoría no encontrada
+    """
     data = request.json or {}
     nuevo_nombre = data.get("nombre")
 
@@ -260,10 +497,26 @@ def api_update_categoria(id_categoria):
 
 
 # =====================================================
-# -----------   ELIMINAR CATEGORÍA ---------------------
+# -----------    ELIMINAR CATEGORÍA    ---------------------
 # =====================================================
 @app.route("/api/categorias/<id_categoria>", methods=["DELETE"])
 def api_delete_categoria(id_categoria):
+    """
+    Eliminar una categoría (solo si no tiene notas asociadas).
+    ---
+    tags:
+      - Categorías
+    parameters:
+      - name: id_categoria
+        in: path
+        required: true
+        type: string
+    responses:
+      200:
+        description: Categoría eliminada
+      400:
+        description: No se puede eliminar porque tiene notas
+    """
     try:
         # Verificar si la categoría existe
         doc_ref = db.collection("categoriaNota").document(id_categoria)
@@ -304,12 +557,34 @@ def api_delete_categoria(id_categoria):
         return jsonify({"error": "Error interno del servidor"}), 500
 
 
-# app.py
-
-# app.py - Añadir/Modificar estos endpoints
+# =====================================================
+# -----------    COMPRAS Y USUARIOS    ----------------
+# =====================================================
 
 @app.route("/api/usuarios/comprar_plantilla", methods=["POST"])
 def api_comprar_plantilla():
+    """
+    Registrar la compra de una plantilla.
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_usuario:
+              type: string
+            id_plantilla:
+              type: string
+    responses:
+      200:
+        description: Compra exitosa o ya obtenida
+      400:
+        description: Error en la compra
+    """
     data = request.json
     id_usuario = data.get("id_usuario")
     id_plantilla = data.get("id_plantilla")
@@ -329,19 +604,76 @@ def api_comprar_plantilla():
 
 @app.route("/api/usuarios/plantillas_desbloqueadas/<id_usuario>", methods=["GET"])
 def api_plantillas_desbloqueadas(id_usuario):
+    """
+    Obtener lista de IDs de plantillas desbloqueadas.
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: id_usuario
+        in: path
+        required: true
+        type: string
+    responses:
+      200:
+        description: Lista de IDs
+    """
     # Usamos la función que ya definiste en firestore.py
     ids = obtener_plantillas_desbloqueadas_usuario(id_usuario)
     return jsonify(ids)
 
-# app.py - Añadir estos endpoints
 
 @app.route("/api/usuarios/check_feature/<id_usuario>/<feature>", methods=["GET"])
 def api_check_feature(id_usuario, feature):
+    """
+    Verificar si un usuario tiene desbloqueado un feature.
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: id_usuario
+        in: path
+        type: string
+        required: true
+      - name: feature
+        in: path
+        type: string
+        required: true
+        example: "font_pacifico"
+    responses:
+      200:
+        description: Retorna booleano desbloqueado
+    """
     desbloqueado = usuario_tiene_feature(id_usuario, feature)
     return jsonify({"desbloqueado": desbloqueado})
 
 @app.route("/api/usuarios/comprar_feature", methods=["POST"])
 def api_comprar_feature():
+    """
+    Comprar un feature (fuente, fondo, etc).
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_usuario:
+              type: string
+            feature:
+              type: string
+            costo:
+              type: integer
+              example: 150
+    responses:
+      200:
+        description: Compra exitosa
+      400:
+        description: Error o saldo insuficiente
+    """
     data = request.json
     id_usuario = data.get("id_usuario")
     feature = data.get("feature") 
@@ -358,13 +690,28 @@ def api_comprar_feature():
     if exito:
         return jsonify({"ok": True, "mensaje": mensaje})
     return jsonify({"ok": False, "error": mensaje}), 400
+
 @app.route("/api/usuarios/fonts_unlocked/<id_usuario>", methods=["GET"])
 def api_fonts_unlocked(id_usuario):
+    """
+    Obtener lista de fuentes desbloqueadas por el usuario.
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: id_usuario
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Lista de nombres de fuentes
+    """
     try:
         # Buscamos todas las features del usuario
         docs = db.collection("usuarios_features")\
-                 .where("id_usuario", "==", id_usuario)\
-                 .stream()
+                  .where("id_usuario", "==", id_usuario)\
+                  .stream()
         
         unlocked_fonts = []
         for d in docs:
@@ -385,14 +732,24 @@ def api_fonts_unlocked(id_usuario):
 @app.route("/api/usuarios/unlocked_backgrounds/<id_usuario>", methods=["GET"])
 def api_get_unlocked_backgrounds(id_usuario):
     """
-    Retorna una lista de los paths de animaciones (features) 
-    que el usuario ha comprado.
+    Retorna una lista de animaciones (backgrounds) compradas.
+    ---
+    tags:
+      - Usuarios y Compras
+    parameters:
+      - name: id_usuario
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Lista de paths de assets desbloqueados
     """
     try:
         # Buscamos en la colección usuarios_features
         docs = db.collection("usuarios_features")\
-                 .where("id_usuario", "==", id_usuario)\
-                 .stream()
+                  .where("id_usuario", "==", id_usuario)\
+                  .stream()
         
         unlocked_backgrounds = []
         for d in docs:
@@ -408,7 +765,7 @@ def api_get_unlocked_backgrounds(id_usuario):
     
     
 # =====================================================
-# -----------   RUN SERVER   ---------------------------
+# -----------    RUN SERVER    ---------------------------
 # =====================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
