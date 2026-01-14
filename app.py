@@ -307,28 +307,46 @@ def api_toggle_favorita(id_nota):
 
 
 # =====================================================
-# -----------    OBTENER TODAS LAS CATEGORÍAS    --------
+# -----------    OBTENER CATEGORÍAS (FILTRADO) --------
 # =====================================================
 @app.route("/api/categorias", methods=["GET"])
 def api_get_categorias():
     """
-    Listar todas las categorías disponibles.
+    Listar categorías filtradas por usuario.
     ---
     tags:
       - Categorías
+    parameters:
+      - name: usuarioId
+        in: query
+        type: string
+        description: ID del usuario para filtrar sus categorías
     responses:
       200:
-        description: Lista de categorías
+        description: Lista de categorías del usuario
     """
+    # 1. Obtenemos el ID del usuario desde los parámetros de la URL (?usuarioId=...)
+    usuario_id = request.args.get('usuarioId')
+
     try:
-        docs = db.collection("categoriaNota").stream()
+        ref = db.collection("categoriaNota")
+        
+        # 2. Si nos envían un usuario, filtramos por él
+        if usuario_id:
+            docs = ref.where("id_usuario", "==", usuario_id).stream()
+        else:
+            # Opcional: Si no envían ID, ¿quieres devolver todas o ninguna? 
+            # Devolvemos todas por defecto (comportamiento anterior) o una lista vacía.
+            docs = ref.stream()
+
         categorias = []
         for d in docs:
             data = d.to_dict()
             if data:
                 categorias.append({
                     "id": d.id,
-                    "nombre": data.get("nombre", "")
+                    "nombre": data.get("nombre", ""),
+                    "usuarioId": data.get("id_usuario", "") # Devolvemos también el ID
                 })
         return jsonify(categorias)
 
@@ -337,66 +355,56 @@ def api_get_categorias():
         return jsonify([]), 500
 
 # =====================================================
-# -----------    CREAR CATEGORÍA    ----------------------
+# -----------    CREAR CATEGORÍA (CON USUARIO) --------
 # =====================================================
 @app.route("/api/categorias", methods=["POST"])
 def api_crear_categoria():
     """
-    Crear una nueva categoría.
-    ---
-    tags:
-      - Categorías
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          required:
-            - nombre
-          properties:
-            nombre:
-              type: string
-              example: "Salsas"
-    responses:
-      201:
-        description: Categoría creada
-      400:
-        description: Ya existe o falta nombre
+    Crear una nueva categoría asociada a un usuario.
     """
     data = request.json or {}
     nombre = data.get("nombre")
+    # 3. Recibimos el usuarioId que manda Flutter
+    usuario_id = data.get("usuarioId") 
 
     if not nombre:
         return jsonify({"error": "Falta 'nombre'"}), 400
+    
+    if not usuario_id:
+        return jsonify({"error": "Falta 'usuarioId'"}), 400
 
     try:
-        # Verificar si ya existe
+        # 4. Verificar si ya existe LA CATEGORÍA PARA ESTE USUARIO ESPECÍFICO
+        #    (Así el usuario A puede tener "Trabajo" y el usuario B también)
         categorias = db.collection("categoriaNota")\
                         .where("nombre", "==", nombre)\
+                        .where("id_usuario", "==", usuario_id)\
                         .stream()
 
         for c in categorias:
             return jsonify({
                 "ok": False,
-                "error": "La categoría ya existe",
+                "error": "Ya tienes una categoría con este nombre",
                 "id": c.id
             }), 400
 
-        # Crear nueva categoría
-        nueva_ref = db.collection("categoriaNota").add({"nombre": nombre})
+        # 5. Guardar incluyendo el id_usuario
+        nueva_ref = db.collection("categoriaNota").add({
+            "nombre": nombre,
+            "id_usuario": usuario_id 
+        })
         id_categoria = nueva_ref[1].id
 
         return jsonify({
             "ok": True,
             "id": id_categoria,
-            "nombre": nombre
+            "nombre": nombre,
+            "usuarioId": usuario_id
         }), 201
 
     except Exception as e:
         print("ERROR al crear categoría:", e)
         return jsonify({"error": "Error interno"}), 500
-
 # =====================================================
 # -----------    NOTAS POR CATEGORÍA    -----------------
 # =====================================================
@@ -769,4 +777,5 @@ def api_get_unlocked_backgrounds(id_usuario):
 # =====================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
+
 
